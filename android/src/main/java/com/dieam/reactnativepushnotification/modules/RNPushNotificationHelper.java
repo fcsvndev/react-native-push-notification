@@ -15,11 +15,15 @@ import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.media.AudioAttributes;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+
+import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
+
 import android.util.Log;
 
 import com.facebook.react.bridge.ReadableMap;
@@ -39,6 +43,7 @@ public class RNPushNotificationHelper {
     public static final String PREFERENCES_KEY = "rn_push_notification";
     private static final long DEFAULT_VIBRATION = 300L;
     private static final String NOTIFICATION_CHANNEL_ID = "rn-push-notification-channel-id";
+    private static final String NOTIFICATION_CHANNEL_ID_2 = "rn-push-notification-channel-id-ring";
 
     private Context context;
     private RNPushNotificationConfig config;
@@ -46,6 +51,9 @@ public class RNPushNotificationHelper {
     private static final int ONE_MINUTE = 60 * 1000;
     private static final long ONE_HOUR = 60 * ONE_MINUTE;
     private static final long ONE_DAY = 24 * ONE_HOUR;
+    private boolean isSound = false;
+    private NotificationCompat.Builder notification;
+    private NotificationCompat.Builder notification2;
 
     public RNPushNotificationHelper(Application context) {
         this.context = context;
@@ -168,7 +176,7 @@ public class RNPushNotificationHelper {
             final String priorityString = bundle.getString("priority");
 
             if (priorityString != null) {
-                switch(priorityString.toLowerCase()) {
+                switch (priorityString.toLowerCase()) {
                     case "max":
                         priority = NotificationCompat.PRIORITY_MAX;
                         break;
@@ -193,7 +201,7 @@ public class RNPushNotificationHelper {
             final String visibilityString = bundle.getString("visibility");
 
             if (visibilityString != null) {
-                switch(visibilityString.toLowerCase()) {
+                switch (visibilityString.toLowerCase()) {
                     case "private":
                         visibility = NotificationCompat.VISIBILITY_PRIVATE;
                         break;
@@ -208,19 +216,31 @@ public class RNPushNotificationHelper {
                 }
             }
 
-            NotificationCompat.Builder notification = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
-                    .setContentTitle(title)
-                    .setTicker(bundle.getString("ticker"))
-                    .setVisibility(visibility)
-                    .setPriority(priority)
-                    .setAutoCancel(bundle.getBoolean("autoCancel", true));
+
+//            if (!bundle.containsKey("playSound") || bundle.getBoolean("playSound")) {
+//
+//            } else {
+//                createNotification2(title, bundle, visibility, priority);
+//            }
+
+            createNotification1(title, bundle, visibility, priority);
+            createNotification2(title, bundle, visibility, priority);
+
+//            notification = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+//                    .setContentTitle(title)
+//                    .setTicker(bundle.getString("ticker"))
+//                    .setVisibility(visibility)
+//                    .setPriority(priority)
+//                    .setAutoCancel(bundle.getBoolean("autoCancel", true));
 
             String group = bundle.getString("group");
             if (group != null) {
                 notification.setGroup(group);
+                notification2.setGroup(group);
             }
 
             notification.setContentText(bundle.getString("message"));
+            notification2.setContentText(bundle.getString("message"));
 
             String largeIcon = bundle.getString("largeIcon");
 
@@ -228,11 +248,13 @@ public class RNPushNotificationHelper {
 
             if (subText != null) {
                 notification.setSubText(subText);
+                notification2.setSubText(subText);
             }
 
             String numberString = bundle.getString("number");
             if (numberString != null) {
                 notification.setNumber(Integer.parseInt(numberString));
+                notification2.setNumber(Integer.parseInt(numberString));
             }
 
             int smallIconResId;
@@ -264,9 +286,11 @@ public class RNPushNotificationHelper {
 
             if (largeIconResId != 0 && (largeIcon != null || Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP)) {
                 notification.setLargeIcon(largeIconBitmap);
+                notification2.setLargeIcon(largeIconBitmap);
             }
 
             notification.setSmallIcon(smallIconResId);
+            notification2.setSmallIcon(smallIconResId);
             String bigText = bundle.getString("bigText");
 
             if (bigText == null) {
@@ -274,22 +298,18 @@ public class RNPushNotificationHelper {
             }
 
             notification.setStyle(new NotificationCompat.BigTextStyle().bigText(bigText));
+            notification2.setStyle(new NotificationCompat.BigTextStyle().bigText(bigText));
 
             Intent intent = new Intent(context, intentClass);
             intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
             bundle.putBoolean("userInteraction", true);
             intent.putExtra("notification", bundle);
-
+            Uri soundUri = null;
             if (!bundle.containsKey("playSound") || bundle.getBoolean("playSound")) {
-                Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+                soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
                 String soundName = bundle.getString("soundName");
                 if (soundName != null) {
                     if (!"default".equalsIgnoreCase(soundName)) {
-
-                        // sound name can be full filename, or just the resource name.
-                        // So the strings 'my_sound.mp3' AND 'my_sound' are accepted
-                        // The reason is to make the iOS and android javascript interfaces compatible
-
                         int resId;
                         if (context.getResources().getIdentifier(soundName, "raw", context.getPackageName()) != 0) {
                             resId = context.getResources().getIdentifier(soundName, "raw", context.getPackageName());
@@ -306,17 +326,22 @@ public class RNPushNotificationHelper {
 
             if (bundle.containsKey("ongoing") || bundle.getBoolean("ongoing")) {
                 notification.setOngoing(bundle.getBoolean("ongoing"));
+                notification2.setOngoing(bundle.getBoolean("ongoing"));
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 notification.setCategory(NotificationCompat.CATEGORY_CALL);
+                notification2.setCategory(NotificationCompat.CATEGORY_CALL);
+
 
                 String color = bundle.getString("color");
                 int defaultColor = this.config.getNotificationColor();
                 if (color != null) {
                     notification.setColor(Color.parseColor(color));
+                    notification2.setColor(Color.parseColor(color));
                 } else if (defaultColor != -1) {
                     notification.setColor(defaultColor);
+                    notification2.setColor(defaultColor);
                 }
             }
 
@@ -324,7 +349,6 @@ public class RNPushNotificationHelper {
 
             PendingIntent pendingIntent = PendingIntent.getActivity(context, notificationID, intent,
                     PendingIntent.FLAG_UPDATE_CURRENT);
-
             NotificationManager notificationManager = notificationManager();
             checkOrCreateChannel(notificationManager);
 
@@ -335,6 +359,7 @@ public class RNPushNotificationHelper {
                 if (vibration == 0)
                     vibration = DEFAULT_VIBRATION;
                 notification.setVibrate(new long[]{0, vibration});
+                notification2.setVibrate(new long[]{0, vibration});
             }
 
             JSONArray actionsArray = null;
@@ -369,6 +394,7 @@ public class RNPushNotificationHelper {
                     PendingIntent pendingActionIntent = PendingIntent.getActivity(context, notificationID, actionIntent,
                             PendingIntent.FLAG_UPDATE_CURRENT);
                     notification.addAction(icon, action, pendingActionIntent);
+                    notification2.addAction(icon, action, pendingActionIntent);
                 }
             }
 
@@ -386,7 +412,15 @@ public class RNPushNotificationHelper {
                 commit(editor);
             }
 
-            Notification info = notification.build();
+            Notification info;
+
+            if (!bundle.containsKey("playSound") || bundle.getBoolean("playSound")) {
+                info  = notification.build();
+
+            }else {
+                info = notification2.build();
+            }
+
             info.defaults |= Notification.DEFAULT_LIGHTS;
 
             if (bundle.containsKey("tag")) {
@@ -551,6 +585,7 @@ public class RNPushNotificationHelper {
     }
 
     private static boolean channelCreated = false;
+
     private void checkOrCreateChannel(NotificationManager manager) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O)
             return;
@@ -565,15 +600,12 @@ public class RNPushNotificationHelper {
         final String importanceString = bundle.getString("importance");
 
         if (importanceString != null) {
-            switch(importanceString.toLowerCase()) {
+            switch (importanceString.toLowerCase()) {
                 case "default":
                     importance = NotificationManager.IMPORTANCE_DEFAULT;
                     break;
                 case "max":
                     importance = NotificationManager.IMPORTANCE_MAX;
-                    break;
-                case "high":
-                    importance = NotificationManager.IMPORTANCE_HIGH;
                     break;
                 case "low":
                     importance = NotificationManager.IMPORTANCE_LOW;
@@ -587,18 +619,66 @@ public class RNPushNotificationHelper {
                 case "unspecified":
                     importance = NotificationManager.IMPORTANCE_UNSPECIFIED;
                     break;
+                case "high":
                 default:
                     importance = NotificationManager.IMPORTANCE_HIGH;
+                    break;
             }
+
         }
 
-        NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, this.config.getChannelName() != null ? this.config.getChannelName() : "rn-push-notification-channel", importance);
+        channel(manager, importance);
+        channelSound(manager, importance);
 
+//        if (!bundle.containsKey("playSound") || bundle.getBoolean("playSound")) {
+//
+//        } else {
+//
+//        }
+
+
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void channelSound(NotificationManager manager, int importance) {
+        NotificationChannel channel = new NotificationChannel(
+                NOTIFICATION_CHANNEL_ID, this.config.getChannelName() != null ? this.config.getChannelName() : "rn-push-notification-channel", importance);
         channel.setDescription(this.config.getChannelDescription());
         channel.enableLights(true);
         channel.enableVibration(true);
-
         manager.createNotificationChannel(channel);
         channelCreated = true;
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void channel(NotificationManager manager, int importance) {
+        NotificationChannel channel2 = new NotificationChannel(
+                NOTIFICATION_CHANNEL_ID_2, this.config.getChannelName() != null ? this.config.getChannelName() : "rn-push-notification-channel", importance);
+        channel2.setDescription(this.config.getChannelDescription());
+        channel2.enableLights(true);
+        channel2.enableVibration(true);
+        channel2.setSound(null, null);
+        manager.createNotificationChannel( channel2);
+        channelCreated = true;
+    }
+
+
+    private void createNotification1(String title, Bundle bundle, int visibility, int priority) {
+        notification = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+                .setContentTitle(title)
+                .setTicker(bundle.getString("ticker"))
+                .setVisibility(visibility)
+                .setPriority(priority)
+                .setAutoCancel(bundle.getBoolean("autoCancel", true));
+    }
+
+
+    private void createNotification2(String title, Bundle bundle, int visibility, int priority) {
+        notification2 = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID_2)
+                .setContentTitle(title)
+                .setTicker(bundle.getString("ticker"))
+                .setVisibility(visibility)
+                .setPriority(priority)
+                .setAutoCancel(bundle.getBoolean("autoCancel", true));
     }
 }
