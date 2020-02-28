@@ -353,6 +353,7 @@ public class RNPushNotificationHelper {
             checkOrCreateChannel(notificationManager);
 
             notification.setContentIntent(pendingIntent);
+            notification2.setContentIntent(pendingIntent);
 
             if (!bundle.containsKey("vibrate") || bundle.getBoolean("vibrate")) {
                 long vibration = bundle.containsKey("vibration") ? (long) bundle.getDouble("vibration") : DEFAULT_VIBRATION;
